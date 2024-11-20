@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.KnnFieldVectorsWriter;
 import org.apache.lucene.codecs.KnnVectorsWriter;
@@ -296,6 +297,11 @@ public final class Lucene99HnswVectorsWriter extends KnnVectorsWriter {
       @Override
       public int entryNode() {
         throw new UnsupportedOperationException("Not supported on a mock graph");
+      }
+
+      @Override
+      public Optional<Boolean> isLoaded() {
+        return graph.isLoaded();
       }
 
       @Override

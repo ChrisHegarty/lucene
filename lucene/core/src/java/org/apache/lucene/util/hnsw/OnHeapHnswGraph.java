@@ -19,6 +19,7 @@ package org.apache.lucene.util.hnsw;
 
 import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.lucene.internal.hppc.IntArrayList;
@@ -190,6 +191,11 @@ public final class OnHeapHnswGraph extends HnswGraph implements Accountable {
   @Override
   public int entryNode() {
     return entryNode.get().node;
+  }
+
+  @Override
+  public Optional<Boolean> isLoaded() {
+    return Optional.empty();
   }
 
   /**

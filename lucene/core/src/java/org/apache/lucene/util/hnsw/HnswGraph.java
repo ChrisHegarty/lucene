@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.PrimitiveIterator;
 import org.apache.lucene.index.FloatVectorValues;
 import org.apache.lucene.internal.hppc.IntArrayList;
@@ -87,6 +88,13 @@ public abstract class HnswGraph {
   /** Returns graph's entry point on the top level * */
   public abstract int entryNode() throws IOException;
 
+  /** Returns a hint as to whether the graph is resident in physical memory. */
+  public /*abstract*/ Optional<Boolean> isLoaded() {
+    return Optional.empty();
+  }
+
+  public abstract void load();
+
   /**
    * Get all nodes on a given level as node 0th ordinals. The nodes are NOT guaranteed to be
    * presented in any particular order.
@@ -121,6 +129,11 @@ public abstract class HnswGraph {
         @Override
         public int entryNode() {
           return 0;
+        }
+
+        @Override
+        public Optional<Boolean> isLoaded() {
+          return Optional.empty();
         }
 
         @Override

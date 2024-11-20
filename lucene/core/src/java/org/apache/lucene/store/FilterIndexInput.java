@@ -106,4 +106,9 @@ public class FilterIndexInput extends IndexInput {
   public void readBytes(byte[] b, int offset, int len) throws IOException {
     in.readBytes(b, offset, len);
   }
+
+  //  @Override
+  //  public Optional<Boolean> isLoaded() {
+  //    return in.isLoaded();
+  //  }
 }

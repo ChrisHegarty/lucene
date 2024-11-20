@@ -22,6 +22,7 @@ import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.KnnVectorsReader;
 import org.apache.lucene.codecs.hnsw.FlatVectorsReader;
@@ -433,6 +434,7 @@ public final class Lucene99HnswVectorsReader extends KnnVectorsReader
   private static final class OffHeapHnswGraph extends HnswGraph {
 
     final IndexInput dataIn;
+    final RandomAccessInput addressesData;
     final int[][] nodesByLevel;
     final int numLevels;
     final int entryNode;
@@ -452,8 +454,8 @@ public final class Lucene99HnswVectorsReader extends KnnVectorsReader
       this.numLevels = entry.numLevels;
       this.entryNode = numLevels > 1 ? nodesByLevel[numLevels - 1][0] : 0;
       this.size = entry.size();
-      final RandomAccessInput addressesData =
-          vectorIndex.randomAccessSlice(entry.offsetsOffset, entry.offsetsLength);
+      this.addressesData = vectorIndex.randomAccessSlice(entry.offsetsOffset, entry.offsetsLength);
+      addressesData.prefetch(0, addressesData.length());
       this.graphLevelNodeOffsets =
           DirectMonotonicReader.getInstance(entry.offsetsMeta, addressesData);
       this.currentNeighborsBuffer = new int[entry.M * 2];
@@ -510,6 +512,11 @@ public final class Lucene99HnswVectorsReader extends KnnVectorsReader
     @Override
     public int entryNode() throws IOException {
       return entryNode;
+    }
+
+    @Override
+    public Optional<Boolean> isLoaded() {
+      return addressesData.isLoaded();
     }
 
     @Override
