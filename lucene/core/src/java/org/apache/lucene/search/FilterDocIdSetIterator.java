@@ -14,17 +14,38 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.lucene.search;
 
-/** Lucene JMH benchmarks. */
+import java.io.IOException;
 
-// jmh.core is not modularized and causes a warning. Suppressing it until it is modularized.
-@SuppressWarnings("requires-automatic")
-module org.apache.lucene.benchmark.jmh {
-  requires jmh.core;
-  requires jdk.unsupported;
-  requires org.apache.lucene.core;
-  requires org.apache.lucene.expressions;
+/** Wrapper around a {@link DocIdSetIterator}. */
+public class FilterDocIdSetIterator extends DocIdSetIterator {
 
-  exports org.apache.lucene.benchmark.jmh;
-  exports org.apache.lucene.benchmark.jmh.jmh_generated;
+  /** Wrapped instance. */
+  protected final DocIdSetIterator in;
+
+  /** Sole constructor. */
+  public FilterDocIdSetIterator(DocIdSetIterator in) {
+    this.in = in;
+  }
+
+  @Override
+  public int docID() {
+    return in.docID();
+  }
+
+  @Override
+  public int nextDoc() throws IOException {
+    return in.nextDoc();
+  }
+
+  @Override
+  public int advance(int target) throws IOException {
+    return in.advance(target);
+  }
+
+  @Override
+  public long cost() {
+    return in.cost();
+  }
 }
