@@ -277,9 +277,20 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
       iwc.setMergeScheduler(mergeScheduler);
       iwc.setMergePolicy(new ForceMergePolicy(iwc.getMergePolicy()));
       try (var writer = new IndexWriter(dir, iwc)) {
-        for (int i = 0; i < 10; i++) {
+//        for (int i = 0; i < 10; i++) {
+//          var doc = new Document();
+//          doc.add(new KnnFloatVectorField("field", new float[] {i, i + 1, i + 2, i + 3}));
+//          writer.addDocument(doc);
+//        }
+        float[][] dataset = {
+                { 0.74021935f, 0.9209938f },
+                { 0.03902049f, 0.9689629f },
+                { 0.92514056f, 0.4463501f },
+                { 0.6673192f, 0.10993068f }
+        };
+        for (int i = 0; i < 4; i++) {
           var doc = new Document();
-          doc.add(new KnnFloatVectorField("field", new float[] {i, i + 1, i + 2, i + 3}));
+          doc.add(new KnnFloatVectorField("field", dataset[i]));
           writer.addDocument(doc);
         }
         writer.commit();
@@ -296,6 +307,7 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
   }
 
   public void testMergingWithDifferentByteKnnFields() throws Exception {
+    assumeTrue("bytes not supported", supportedVectorEncodings().contains(VectorEncoding.BYTE));
     try (var dir = newDirectory()) {
       IndexWriterConfig iwc = new IndexWriterConfig();
       Codec codec = getCodec();
@@ -994,6 +1006,7 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
   }
 
   public void testByteVectorScorerIteration() throws Exception {
+    assumeTrue("bytes not supported", supportedVectorEncodings().contains(VectorEncoding.BYTE));
     IndexWriterConfig iwc = newIndexWriterConfig();
     if (random().nextBoolean()) {
       iwc.setIndexSort(new Sort(new SortField("sortkey", SortField.Type.INT)));
@@ -1081,6 +1094,7 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
   }
 
   public void testEmptyByteVectorData() throws Exception {
+    assumeTrue("bytes not supported", supportedVectorEncodings().contains(VectorEncoding.BYTE));
     try (Directory dir = newDirectory();
         IndexWriter w = new IndexWriter(dir, newIndexWriterConfig())) {
       var doc1 = new Document();
@@ -1112,11 +1126,20 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
   }
 
   /**
+   * The vector encodings supported by the format. Defaults to all VectorEncoding.values(). Override
+   * if the format only supports a subset of these encodings.
+   */
+  protected List<VectorEncoding> supportedVectorEncodings() {
+    return Arrays.stream(VectorEncoding.values()).toList();
+  }
+
+  /**
    * This method is overrideable since old codec versions only support {@link
    * VectorEncoding#FLOAT32}.
    */
   protected VectorEncoding randomVectorEncoding() {
-    return VectorEncoding.values()[random().nextInt(VectorEncoding.values().length)];
+    var encodings = supportedVectorEncodings().toArray(VectorEncoding[]::new);
+    return encodings[random().nextInt(encodings.length)];
   }
 
   public void testIndexedValueNotAliased() throws Exception {
@@ -1193,6 +1216,7 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
   }
 
   public void testSortedIndexBytes() throws Exception {
+    assumeTrue("bytes not supported", supportedVectorEncodings().contains(VectorEncoding.BYTE));
     IndexWriterConfig iwc = newIndexWriterConfig();
     iwc.setIndexSort(new Sort(new SortField("sortkey", SortField.Type.INT)));
     String fieldName = "field";
@@ -1361,6 +1385,7 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
    * back consistently.
    */
   public void testRandomBytes() throws Exception {
+    assumeTrue("bytes not supported", supportedVectorEncodings().contains(VectorEncoding.BYTE));
     IndexWriterConfig iwc = newIndexWriterConfig();
     if (random().nextBoolean()) {
       iwc.setIndexSort(new Sort(new SortField("sortkey", SortField.Type.INT)));
@@ -1875,6 +1900,7 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
   }
 
   public void testMismatchedFields() throws Exception {
+    assumeTrue("bytes not supported", supportedVectorEncodings().contains(VectorEncoding.BYTE));
     Directory dir1 = newDirectory();
     IndexWriter w1 = new IndexWriter(dir1, newIndexWriterConfig());
     Document doc = new Document();

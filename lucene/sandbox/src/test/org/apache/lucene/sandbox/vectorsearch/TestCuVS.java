@@ -66,7 +66,10 @@ public class TestCuVS extends LuceneTestCase {
   public static void beforeClass() throws Exception {
     directory = newDirectory();
 
-    Codec codec = new CuVSCodec();
+    //Codec codec = new CuVSCodec();
+    Codec codec = TestUtil.alwaysKnnVectorsFormat(
+        new CuVSVectorsFormat(1, 128, 64, CuVSVectorsWriter.MergeStrategy.NON_TRIVIAL_MERGE)
+    );
 
     RandomIndexWriter writer =
         new RandomIndexWriter(

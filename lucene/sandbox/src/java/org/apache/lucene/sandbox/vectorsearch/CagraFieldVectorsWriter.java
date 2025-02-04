@@ -17,7 +17,6 @@
 package org.apache.lucene.sandbox.vectorsearch;
 
 import java.io.IOException;
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.lucene.codecs.KnnFieldVectorsWriter;
@@ -26,10 +25,9 @@ import org.apache.lucene.index.FieldInfo;
 /** CuVS based fields writer */
 /*package-private*/ class CagraFieldVectorsWriter extends KnnFieldVectorsWriter<float[]> {
 
-  public final String fieldName;
-  public final ConcurrentHashMap<Integer, float[]> vectors =
-      new ConcurrentHashMap<Integer, float[]>();
-  public int fieldVectorDimension = -1;
+  final String fieldName;
+  final ConcurrentHashMap<Integer, float[]> vectors = new ConcurrentHashMap<>();
+  final int fieldVectorDimension;
 
   public CagraFieldVectorsWriter(FieldInfo fieldInfo) {
     this.fieldName = fieldInfo.getName();

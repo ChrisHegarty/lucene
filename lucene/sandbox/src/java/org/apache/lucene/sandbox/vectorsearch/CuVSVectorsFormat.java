@@ -31,23 +31,24 @@ public class CuVSVectorsFormat extends KnnVectorsFormat {
   public static final String VECTOR_DATA_EXTENSION = "cag";
   public static final String META_EXTENSION = "cagmf";
   public static final int VERSION_CURRENT = 0;
-  public final int maxDimensions = 4096;
-  public final int cuvsWriterThreads;
-  public final int intGraphDegree;
-  public final int graphDegree;
-  public MergeStrategy mergeStrategy;
-  public static CuVSResources resources;
+  public static final int MAX_DIMENSIONS = 4096;
+
+  public static final int DEFAULT_WRITER_THREADS = 1;
+  public static final int DEFAULT_INTERMEDIATE_GRAPH_DEGREE = 128;
+  public static final int DEFAULT_GRAPH_DEGREE = 64;
+
+  final int cuvsWriterThreads;
+  final int intGraphDegree;
+  final int graphDegree;
+  final MergeStrategy mergeStrategy;
+  final CuVSResources resources;
 
   public CuVSVectorsFormat() {
-    super("CuVSVectorsFormat");
-    this.cuvsWriterThreads = 1;
-    this.intGraphDegree = 128;
-    this.graphDegree = 64;
-    try {
-      resources = CuVSResources.create();
-    } catch (Throwable e) {
-      throw new RuntimeException(e);
-    }
+    this(
+        DEFAULT_WRITER_THREADS,
+        DEFAULT_INTERMEDIATE_GRAPH_DEGREE,
+        DEFAULT_GRAPH_DEGREE,
+        MergeStrategy.NON_TRIVIAL_MERGE);
   }
 
   public CuVSVectorsFormat(
@@ -58,23 +59,43 @@ public class CuVSVectorsFormat extends KnnVectorsFormat {
     this.cuvsWriterThreads = cuvsWriterThreads;
     this.intGraphDegree = intGraphDegree;
     this.graphDegree = graphDegree;
+    resources = cuVSResourcesOrNull();
+  }
+
+  private static CuVSResources cuVSResourcesOrNull() {
     try {
-      resources = CuVSResources.create();
+      return CuVSResources.create();
+    } catch (UnsupportedOperationException e) {
+      return null;
     } catch (LibraryException ex) {
+      // TODO: log and/or return null
       throw ex;
     } catch (Throwable e) {
       throw new RuntimeException(e);
     }
   }
 
+  /**
+   * Tells whether the platform supports cuvs.
+   *
+   * @throws UnsupportedOperationException if not supported
+   */
+  public void checkSupported() {
+    if (resources == null) {
+      throw new UnsupportedOperationException();
+    }
+  }
+
   @Override
   public CuVSVectorsWriter fieldsWriter(SegmentWriteState state) throws IOException {
+    checkSupported();
     return new CuVSVectorsWriter(
         state, cuvsWriterThreads, intGraphDegree, graphDegree, mergeStrategy, resources);
   }
 
   @Override
   public CuVSVectorsReader fieldsReader(SegmentReadState state) throws IOException {
+    checkSupported();
     try {
       return new CuVSVectorsReader(state, resources);
     } catch (Throwable e) {
@@ -84,6 +105,18 @@ public class CuVSVectorsFormat extends KnnVectorsFormat {
 
   @Override
   public int getMaxDimensions(String fieldName) {
-    return maxDimensions;
+    return MAX_DIMENSIONS;
+  }
+
+  @Override
+  public String toString() {
+    StringBuilder sb = new StringBuilder("CuVSVectorsFormat(");
+    sb.append("cuvsWriterThreads=").append(cuvsWriterThreads);
+    sb.append("intGraphDegree=").append(intGraphDegree);
+    sb.append("graphDegree=").append(graphDegree);
+    sb.append("mergeStrategy=").append(mergeStrategy);
+    sb.append("resources=").append(resources);
+    sb.append(")");
+    return sb.toString();
   }
 }

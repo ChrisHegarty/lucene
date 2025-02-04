@@ -28,8 +28,11 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.logging.Logger;
+
 import org.apache.lucene.codecs.CodecUtil;
 import org.apache.lucene.codecs.KnnFieldVectorsWriter;
 import org.apache.lucene.codecs.KnnVectorsWriter;
@@ -42,10 +45,15 @@ import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.util.IOUtils;
 import org.apache.lucene.util.SuppressForbidden;
 
+import static org.apache.lucene.util.RamUsageEstimator.shallowSizeOfInstance;
+
 /** KnnVectorsWriter for CuVS, responsible for merge and flush of vectors into GPU */
 /*package-private*/ class CuVSVectorsWriter extends KnnVectorsWriter {
 
-  // protected Logger log = Logger.getLogger(getClass().getName());
+  private static final Logger log = Logger.getLogger(CuVSVectorsWriter.class.getName());
+
+  private static final long SHALLOW_RAM_BYTES_USED =
+          shallowSizeOfInstance(CuVSVectorsWriter.class);
 
   private List<CagraFieldVectorsWriter> fieldVectorWriters = new ArrayList<>();
   private IndexOutput cuVSIndex = null;
@@ -91,11 +99,6 @@ import org.apache.lucene.util.SuppressForbidden;
   }
 
   @Override
-  public long ramBytesUsed() {
-    return 0;
-  }
-
-  @Override
   public void close() throws IOException {
     IOUtils.close(cuVSIndex);
     cuVSIndex = null;
@@ -112,26 +115,41 @@ import org.apache.lucene.util.SuppressForbidden;
 
   @SuppressForbidden(reason = "A temporary java.util.File is needed for Cagra's serialization")
   private byte[] createCagraIndex(float[][] vectors, List<Integer> mapping) throws Throwable {
-    CagraIndexParams indexParams =
-        new CagraIndexParams.Builder()
-            .withNumWriterThreads(cuvsWriterThreads)
-            .withIntermediateGraphDegree(intGraphDegree)
-            .withGraphDegree(graphDegree)
+    Thread.dumpStack();
+    float[][] dataset = {
+            { 0.74021935f, 0.9209938f },
+            { 0.03902049f, 0.9689629f },
+            { 0.92514056f, 0.4463501f },
+            { 0.6673192f, 0.10993068f }
+    };
+
+    // Configure index parameters
+    CagraIndexParams indexParams = new CagraIndexParams.Builder()
             .withCagraGraphBuildAlgo(CagraGraphBuildAlgo.NN_DESCENT)
+            .withGraphDegree(1)
+            .withIntermediateGraphDegree(2)
+            .withNumWriterThreads(32)
+            .withMetric(CagraIndexParams.CuvsDistanceType.L2Expanded)
             .build();
 
-    // log.info("Indexing started: " + System.currentTimeMillis());
-    cagraIndex =
-        CagraIndex.newBuilder(resources).withDataset(vectors).withIndexParams(indexParams).build();
-    // log.info("Indexing done: " + System.currentTimeMillis() + "ms, documents: " +
-    // vectors.length);
+    try (CuVSResources resources = CuVSResources.create()) {
 
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    Path tmpFile =
-        Files.createTempFile(
-            "tmpindex", "cag"); // TODO: Should we make this a file with random names?
-    cagraIndex.serialize(baos, tmpFile);
-    return baos.toByteArray();
+        // Create the index with the dataset
+        cagraIndex = CagraIndex.newBuilder(resources)
+                .withDataset(dataset)
+                .withIndexParams(indexParams)
+                .build();
+
+        // log.info("Indexing done: " + System.currentTimeMillis() + "ms, documents: " +
+        // vectors.length);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        Path tmpFile =
+                Files.createTempFile(
+                        "tmpindex", "cag"); // TODO: Should we make this a file with random names?
+        cagraIndex.serialize(baos, tmpFile);
+        return baos.toByteArray();
+    }
   }
 
   @SuppressForbidden(reason = "A temporary java.util.File is needed for BruteForce's serialization")
@@ -179,9 +197,8 @@ import org.apache.lucene.util.SuppressForbidden;
   @SuppressWarnings({"resource", "rawtypes", "unchecked"})
   @Override
   public void flush(int maxDoc, DocMap sortMap) throws IOException {
-    cuVSIndex =
-        this.segmentWriteState.directory.createOutput(
-            cuVSDataFilename, this.segmentWriteState.context);
+    var dir = this.segmentWriteState.directory;
+    cuVSIndex = dir.createOutput(cuVSDataFilename, this.segmentWriteState.context);
     CodecUtil.writeIndexHeader(
         cuVSIndex,
         CuVSVectorsFormat.VECTOR_DATA_CODEC_NAME,
@@ -191,17 +208,17 @@ import org.apache.lucene.util.SuppressForbidden;
 
     CuVSSegmentFile cuVSFile = new CuVSSegmentFile(new SegmentOutputStream(cuVSIndex, 100000));
 
-    LinkedHashMap<String, Integer> metaMap = new LinkedHashMap<String, Integer>();
+    LinkedHashMap<String, Integer> metaMap = new LinkedHashMap<>();
 
     for (CagraFieldVectorsWriter field : fieldVectorWriters) {
       // long start = System.currentTimeMillis();
 
-      byte[] cagraIndexBytes = null;
-      byte[] bruteForceIndexBytes = null;
-      byte[] hnswIndexBytes = null;
+      byte[] cagraIndexBytes;
+      byte[] bruteForceIndexBytes;
+      byte[] hnswIndexBytes;
       try {
-        // log.info("Starting CAGRA indexing, space remaining: " + new File("/").getFreeSpace());
-        // log.info("Starting CAGRA indexing, docs: " + field.vectors.size());
+        // log.info("Starting CAGRA indexing, space remaining: " + Path.of("/").toFile().getFreeSpace());
+        log.info("Starting CAGRA indexing, docs: " + field.vectors.size());
 
         float vectors[][] = new float[field.vectors.size()][field.vectors.get(0).length];
         for (int i = 0; i < vectors.length; i++) {
@@ -210,7 +227,9 @@ import org.apache.lucene.util.SuppressForbidden;
           }
         }
 
-        cagraIndexBytes = createCagraIndex(vectors, new ArrayList<Integer>(field.vectors.keySet()));
+        //log.info("Starting CAGRA indexing, vectors: " + java.util.Arrays.deepToString(vectors));
+
+        cagraIndexBytes = createCagraIndex(vectors, new ArrayList<>(field.vectors.keySet()));
         bruteForceIndexBytes = createBruteForceIndex(vectors);
         hnswIndexBytes = createHnswIndex(vectors);
       } catch (Throwable e) {
@@ -270,8 +289,8 @@ import org.apache.lucene.util.SuppressForbidden;
       readers.add(reader);
     }
 
-    // log.info("Merging one field for segment: " + segmentWriteState.segmentInfo.name);
-    // log.info("Segment files? " + Arrays.toString(segmentWriteState.directory.listAll()));
+    log.info("Merging one field for segment: " + segmentWriteState.segmentInfo.name);
+    log.info("Segment files? " + Arrays.toString(segmentWriteState.directory.listAll()));
 
     if (!List.of(segmentWriteState.directory.listAll()).contains(cuVSDataFilename)) {
       IndexOutput mergedVectorIndex =
@@ -286,13 +305,13 @@ import org.apache.lucene.util.SuppressForbidden;
       mergedIndexFile = new CuVSSegmentFile(this.mergeOutputStream);
     }
 
-    // log.info("Segment files? " + Arrays.toString(segmentWriteState.directory.listAll()));
+    log.info("Segment files? " + Arrays.toString(segmentWriteState.directory.listAll()));
 
     if (mergeStrategy.equals(MergeStrategy.TRIVIAL_MERGE)) {
       throw new UnsupportedOperationException();
     } else if (mergeStrategy.equals(MergeStrategy.NON_TRIVIAL_MERGE)) {
-      // log.info("Readers: " + segInputStreams.size() + ", deocMaps: " +
-      // mergeState.docMaps.length);
+      log.info("Readers: " + segInputStreams.size() + ", docMaps: " +
+       mergeState.docMaps.length);
       ArrayList<Integer> docMapList = new ArrayList<Integer>();
 
       for (int i = 0; i < mergeState.knnVectorsReaders.length; i++) {
@@ -311,9 +330,9 @@ import org.apache.lucene.util.SuppressForbidden;
       ArrayList<float[]> mergedVectors =
           Util.getMergedVectors(
               segInputStreams, fieldInfo.name, segmentWriteState.segmentInfo.name);
-      // log.info("Final mapping: " + docMapList);
-      // log.info("Final mapping: " + docMapList.size());
-      // log.info("Merged vectors: " + mergedVectors.size());
+      log.info("Final mapping: " + docMapList);
+      log.info("Final mapping: " + docMapList.size());
+      log.info("Merged vectors: " + mergedVectors.size());
       LinkedHashMap<String, Integer> metaMap = new LinkedHashMap<String, Integer>();
       byte[] cagraIndexBytes = null;
       byte[] bruteForceIndexBytes = null;
@@ -365,6 +384,15 @@ import org.apache.lucene.util.SuppressForbidden;
       this.mergeOutputStream = null;
       this.mergedIndexFile = null;
     }
+  }
+
+  @Override
+  public long ramBytesUsed() {
+    long total = SHALLOW_RAM_BYTES_USED;
+    for (var field : fieldVectorWriters) {
+      total += field.ramBytesUsed();
+    }
+    return total;
   }
 
   /** OutputStream for writing into an IndexOutput */
