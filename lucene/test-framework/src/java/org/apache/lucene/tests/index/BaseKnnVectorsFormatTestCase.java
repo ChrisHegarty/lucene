@@ -26,6 +26,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -241,6 +242,9 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
     try (Directory dir = newDirectory()) {
       try (IndexWriter w = new IndexWriter(dir, newIndexWriterConfig())) {
         Document doc = new Document();
+        doc.add(new KnnFloatVectorField("f", new float[4], VectorSimilarityFunction.DOT_PRODUCT));
+        w.addDocument(doc);
+        doc = new Document();
         doc.add(new KnnFloatVectorField("f", new float[4], VectorSimilarityFunction.DOT_PRODUCT));
         w.addDocument(doc);
       }
@@ -1539,6 +1543,7 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
       }
       try (IndexReader reader = DirectoryReader.open(iw)) {
         for (LeafReaderContext ctx : reader.leaves()) {
+          List<Integer> docsWithAVector = new ArrayList<>();
           Bits liveDocs = ctx.reader().getLiveDocs();
           FloatVectorValues vectorValues = ctx.reader().getFloatVectorValues(fieldName);
           if (vectorValues == null) {
@@ -1551,6 +1556,7 @@ public abstract class BaseKnnVectorsFormatTestCase extends BaseIndexFileFormatTe
           while (true) {
             if (!((docId = iterator.nextDoc()) != NO_MORE_DOCS)) break;
             float[] v = vectorValues.vectorValue(iterator.index());
+            docsWithAVector.add(docId);
             assertEquals(dimension, v.length);
             String idString = storedFields.document(docId).getField("id").stringValue();
             int id = Integer.parseInt(idString);
