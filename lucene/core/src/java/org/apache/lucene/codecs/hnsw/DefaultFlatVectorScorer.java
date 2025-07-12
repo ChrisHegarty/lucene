@@ -170,21 +170,35 @@ public class DefaultFlatVectorScorer implements FlatVectorsScorer {
 
   /** A {@link RandomVectorScorer} for float vectors. */
   private static class FloatVectorScorer extends RandomVectorScorer.AbstractRandomVectorScorer {
-    private final FloatVectorValues values;
+    private final FloatVectorValues values1, values2, values3, values4;
     private final float[] query;
     private final VectorSimilarityFunction similarityFunction;
 
     public FloatVectorScorer(
-        FloatVectorValues values, float[] query, VectorSimilarityFunction similarityFunction) {
+        FloatVectorValues values, float[] query, VectorSimilarityFunction similarityFunction)
+        throws IOException {
       super(values);
-      this.values = values;
+      this.values1 = values;
+      this.values2 = values.copy();
+      this.values3 = values.copy();
+      this.values4 = values.copy();
       this.query = query;
       this.similarityFunction = similarityFunction;
     }
 
     @Override
     public float score(int node) throws IOException {
-      return similarityFunction.compare(query, values.vectorValue(node));
+      return similarityFunction.compare(query, values1.vectorValue(node));
+    }
+
+    @Override
+    public void scoreBulk(float[] scores, int node1, int node2, int node3, int node4)
+        throws IOException {
+      var vec1 = values1.vectorValue(node1);
+      var vec2 = values2.vectorValue(node2);
+      var vec3 = values3.vectorValue(node3);
+      var vec4 = values4.vectorValue(node4);
+      similarityFunction.compareBulk(scores, query, vec1, vec2, vec3, vec4);
     }
   }
 

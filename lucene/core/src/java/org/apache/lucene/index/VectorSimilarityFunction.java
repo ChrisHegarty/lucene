@@ -106,6 +106,15 @@ public enum VectorSimilarityFunction {
    */
   public abstract float compare(float[] v1, float[] v2);
 
+  /** */
+  public void compareBulk(
+      float[] scores, float[] q, float[] d1, float[] d2, float[] d3, float[] d4) {
+    scores[0] = compare(q, d1);
+    scores[1] = compare(q, d2);
+    scores[2] = compare(q, d3);
+    scores[3] = compare(q, d4);
+  }
+
   /**
    * Calculates a similarity score between the two vectors with a specified function. Higher
    * similarity scores correspond to closer vectors. Each (signed) byte represents a vector

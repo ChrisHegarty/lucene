@@ -157,6 +157,45 @@ final class PanamaVectorUtilSupport implements VectorUtilSupport {
   }
 
   @Override
+  public void dotProductBulk(
+      float[] scores, float[] q, float[] d1, float[] d2, float[] d3, float[] d4) {
+    assert scores.length == 4;
+    int i = 0;
+    FloatVector sv1 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv2 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv3 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv4 = FloatVector.zero(FLOAT_SPECIES);
+
+    final int limit = FLOAT_SPECIES.loopBound(q.length);
+    for (; i < limit; i += FLOAT_SPECIES.length()) {
+      FloatVector qv = FloatVector.fromArray(FLOAT_SPECIES, q, i);
+      FloatVector dv1 = FloatVector.fromArray(FLOAT_SPECIES, d1, i);
+      FloatVector dv2 = FloatVector.fromArray(FLOAT_SPECIES, d2, i);
+      FloatVector dv3 = FloatVector.fromArray(FLOAT_SPECIES, d3, i);
+      FloatVector dv4 = FloatVector.fromArray(FLOAT_SPECIES, d4, i);
+      sv1 = fma(qv, dv1, sv1);
+      sv2 = fma(qv, dv2, sv2);
+      sv3 = fma(qv, dv3, sv3);
+      sv4 = fma(qv, dv4, sv4);
+    }
+    float score1 = sv1.reduceLanes(VectorOperators.ADD);
+    float score2 = sv2.reduceLanes(VectorOperators.ADD);
+    float score3 = sv3.reduceLanes(VectorOperators.ADD);
+    float score4 = sv4.reduceLanes(VectorOperators.ADD);
+
+    for (; i < q.length; i++) {
+      score1 += q[i] * d1[i];
+      score2 += q[i] * d2[i];
+      score3 += q[i] * d3[i];
+      score4 += q[i] * d4[i];
+    }
+    scores[0] = score1;
+    scores[1] = score2;
+    scores[2] = score3;
+    scores[3] = score4;
+  }
+
+  @Override
   public float cosine(float[] a, float[] b) {
     int i = 0;
     float sum = 0;
