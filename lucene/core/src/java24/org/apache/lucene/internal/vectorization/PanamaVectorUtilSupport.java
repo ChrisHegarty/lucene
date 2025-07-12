@@ -17,6 +17,7 @@
 package org.apache.lucene.internal.vectorization;
 
 import static java.lang.foreign.ValueLayout.JAVA_BYTE;
+import static java.lang.foreign.ValueLayout.JAVA_FLOAT_UNALIGNED;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
 import static jdk.incubator.vector.VectorOperators.ADD;
 import static jdk.incubator.vector.VectorOperators.B2I;
@@ -26,6 +27,7 @@ import static jdk.incubator.vector.VectorOperators.S2I;
 import static jdk.incubator.vector.VectorOperators.ZERO_EXTEND_B2S;
 
 import java.lang.foreign.MemorySegment;
+import java.nio.ByteOrder;
 import jdk.incubator.vector.ByteVector;
 import jdk.incubator.vector.FloatVector;
 import jdk.incubator.vector.IntVector;
@@ -996,5 +998,128 @@ final class PanamaVectorUtilSupport implements VectorUtilSupport {
             .recalculateOffset(vector, i, oldAlpha, oldMinQuantile);
 
     return correction;
+  }
+
+  @Override
+  public void dotProductBulk(float[] scores, float[] q, float[] d1, float[] d2, float[] d3, float[] d4) {
+    dotProductBulkFromArrays(scores, q, d1, d2, d3, d4);
+  }
+
+  public static void dotProductBulkFromArrays(float[] scores, float[] q, float[] d1, float[] d2, float[] d3, float[] d4) {
+    assert scores.length == 4;
+    int i = 0;
+    FloatVector sv1 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv2 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv3 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv4 = FloatVector.zero(FLOAT_SPECIES);
+
+    final int unrolledLimit = FLOAT_SPECIES.loopBound(q.length);
+    for (;  i < unrolledLimit; i += FLOAT_SPECIES.length()) {
+      FloatVector qv = FloatVector.fromArray(FLOAT_SPECIES, q, i);
+      FloatVector dv1 = FloatVector.fromArray(FLOAT_SPECIES, d1, i);
+      FloatVector dv2 = FloatVector.fromArray(FLOAT_SPECIES, d2, i);
+      FloatVector dv3 = FloatVector.fromArray(FLOAT_SPECIES, d3, i);
+      FloatVector dv4 = FloatVector.fromArray(FLOAT_SPECIES, d4, i);
+      sv1 = fma(qv, dv1, sv1);
+      sv2 = fma(qv, dv2, sv2);
+      sv3 = fma(qv, dv3, sv3);
+      sv4 = fma(qv, dv4, sv4);
+    }
+    float score1 = sv1.reduceLanes(VectorOperators.ADD);
+    float score2 = sv2.reduceLanes(VectorOperators.ADD);
+    float score3 = sv3.reduceLanes(VectorOperators.ADD);
+    float score4 = sv4.reduceLanes(VectorOperators.ADD);
+
+    for (; i < q.length; i++) {
+      score1 += q[i] * d1[i];
+      score2 += q[i] * d2[i];
+      score3 += q[i] * d3[i];
+      score4 += q[i] * d4[i];
+    }
+    scores[0] = score1;
+    scores[1] = score2;
+    scores[2] = score3;
+    scores[3] = score4;
+  }
+
+  public static void dotProductBulkFromSegments(float[] scores, MemorySegment q,
+      MemorySegment d1, MemorySegment d2, MemorySegment d3, MemorySegment d4,
+      int elementCount) {
+    assert scores.length == 4;
+    int i = 0;
+    FloatVector sv1 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv2 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv3 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv4 = FloatVector.zero(FLOAT_SPECIES);
+
+    final int limit = FLOAT_SPECIES.loopBound(elementCount);
+    for (;  i < limit; i += FLOAT_SPECIES.length()) {
+      final int offset = i * Float.BYTES;
+      FloatVector qv = FloatVector.fromMemorySegment(FLOAT_SPECIES, q, offset, ByteOrder.LITTLE_ENDIAN);
+      FloatVector dv1 = FloatVector.fromMemorySegment(FLOAT_SPECIES, d1, offset, ByteOrder.LITTLE_ENDIAN);
+      FloatVector dv2 = FloatVector.fromMemorySegment(FLOAT_SPECIES, d2, offset, ByteOrder.LITTLE_ENDIAN);
+      FloatVector dv3 = FloatVector.fromMemorySegment(FLOAT_SPECIES, d3, offset, ByteOrder.LITTLE_ENDIAN);
+      FloatVector dv4 = FloatVector.fromMemorySegment(FLOAT_SPECIES, d4, offset, ByteOrder.LITTLE_ENDIAN);
+      sv1 = fma(qv, dv1, sv1);
+      sv2 = fma(qv, dv2, sv2);
+      sv3 = fma(qv, dv3, sv3);
+      sv4 = fma(qv, dv4, sv4);
+    }
+    float score1 = sv1.reduceLanes(VectorOperators.ADD);
+    float score2 = sv2.reduceLanes(VectorOperators.ADD);
+    float score3 = sv3.reduceLanes(VectorOperators.ADD);
+    float score4 = sv4.reduceLanes(VectorOperators.ADD);
+
+    for (; i < elementCount; i++) {
+      final int offset = i * Float.BYTES;
+      score1 += q.get(JAVA_FLOAT_UNALIGNED, offset) * d1.get(JAVA_FLOAT_UNALIGNED, offset);
+      score2 += q.get(JAVA_FLOAT_UNALIGNED, offset) * d2.get(JAVA_FLOAT_UNALIGNED, offset);
+      score3 += q.get(JAVA_FLOAT_UNALIGNED, offset) * d3.get(JAVA_FLOAT_UNALIGNED, offset);
+      score4 += q.get(JAVA_FLOAT_UNALIGNED, offset) * d4.get(JAVA_FLOAT_UNALIGNED, offset);
+    }
+    scores[0] = score1;
+    scores[1] = score2;
+    scores[2] = score3;
+    scores[3] = score4;
+  }
+
+  public static void dotProductBulkQueryFromArray(float[] scores, float[] q,
+      MemorySegment d1, MemorySegment d2, MemorySegment d3, MemorySegment d4) {
+    assert scores.length == 4;
+    int i = 0;
+    FloatVector sv1 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv2 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv3 = FloatVector.zero(FLOAT_SPECIES);
+    FloatVector sv4 = FloatVector.zero(FLOAT_SPECIES);
+
+    final int unrolledLimit = FLOAT_SPECIES.loopBound(q.length);
+    for (;  i < unrolledLimit; i += FLOAT_SPECIES.length()) {
+      FloatVector qv = FloatVector.fromArray(FLOAT_SPECIES, q, i);
+      final int offset = i * Float.BYTES;
+      FloatVector dv1 = FloatVector.fromMemorySegment(FLOAT_SPECIES, d1, offset, ByteOrder.LITTLE_ENDIAN);
+      FloatVector dv2 = FloatVector.fromMemorySegment(FLOAT_SPECIES, d2, offset, ByteOrder.LITTLE_ENDIAN);
+      FloatVector dv3 = FloatVector.fromMemorySegment(FLOAT_SPECIES, d3, offset, ByteOrder.LITTLE_ENDIAN);
+      FloatVector dv4 = FloatVector.fromMemorySegment(FLOAT_SPECIES, d4, offset, ByteOrder.LITTLE_ENDIAN);
+      sv1 = fma(qv, dv1, sv1);
+      sv2 = fma(qv, dv2, sv2);
+      sv3 = fma(qv, dv3, sv3);
+      sv4 = fma(qv, dv4, sv4);
+    }
+    float score1 = sv1.reduceLanes(VectorOperators.ADD);
+    float score2 = sv2.reduceLanes(VectorOperators.ADD);
+    float score3 = sv3.reduceLanes(VectorOperators.ADD);
+    float score4 = sv4.reduceLanes(VectorOperators.ADD);
+
+    for (; i < q.length; i++) {
+      final int offset = i * Float.BYTES;
+      score1 += q[i] * d1.get(JAVA_FLOAT_UNALIGNED, offset);
+      score2 += q[i] * d2.get(JAVA_FLOAT_UNALIGNED, offset);
+      score3 += q[i] * d3.get(JAVA_FLOAT_UNALIGNED, offset);
+      score4 += q[i] * d4.get(JAVA_FLOAT_UNALIGNED, offset);
+    }
+    scores[0] = score1;
+    scores[1] = score2;
+    scores[2] = score3;
+    scores[3] = score4;
   }
 }
